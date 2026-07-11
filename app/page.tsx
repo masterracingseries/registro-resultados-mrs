@@ -18,7 +18,7 @@ import {
 import LoginForm from '@/components/LoginForm';
 import ResultsTable, { AddPilotForm } from '@/components/ResultsTable';
 import { Pilot, ResultRow, RaceMetadata, AliasUpdate, Alias1Update, NewPilot } from '@/types';
-import { F1_TRACKS, DIVISIONS, cn } from '@/lib/constants';
+import { F1_TRACKS, DIVISIONS, cn, normalizeTeamName } from '@/lib/constants';
 import { calculatePoints } from '@/lib/points';
 
 const SPREADSHEET_ID = '11D8zcyPx3AdgPsF_pefks0hmicP3jGm22lDIZF24qAk';
@@ -73,6 +73,7 @@ function matchResults(extracted: Extracted[], pilots: Pilot[], raceType: 'Carrer
   return extracted.map((r) => {
     const key = r.piloto.toUpperCase().trim();
     const tkey = tokenSort(r.piloto);
+    const normalizedTeam = normalizeTeamName(r.equipo);
 
     // 1. Exact division match
     const sameDiv = exactMap.get(key) ?? tokenMap.get(tkey);
@@ -81,7 +82,7 @@ function matchResults(extracted: Extracted[], pilots: Pilot[], raceType: 'Carrer
         position: r.pos,
         pilotName: r.piloto,
         // Reservas registradas en esta división también deben mostrar "Reserva" en equipo
-        team: sameDiv.statusGeneral === 'Reserva' ? 'Reserva' : r.equipo,
+        team: sameDiv.statusGeneral === 'Reserva' ? 'Reserva' : normalizedTeam,
         grid: r.salida ?? null,
         stops: r.paradas ?? null,
         bestLap: r.mejor_tiempo || '',
@@ -126,7 +127,7 @@ function matchResults(extracted: Extracted[], pilots: Pilot[], raceType: 'Carrer
     return {
       position: r.pos,
       pilotName: r.piloto,
-      team: r.equipo,
+      team: normalizedTeam,
       grid: r.salida ?? null,
       stops: r.paradas ?? null,
       bestLap: r.mejor_tiempo || '',
