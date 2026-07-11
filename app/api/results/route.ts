@@ -3,6 +3,9 @@ import { isAuthenticated } from '@/lib/auth';
 import { getSheetsClient, SPREADSHEET_ID, formatForSheets } from '@/lib/sheets';
 import { ResultRow, RaceMetadata, AliasUpdate, Alias1Update, NewPilot } from '@/types';
 
+// Varias escrituras secuenciales a Sheets pueden superar el timeout default
+export const maxDuration = 60;
+
 export async function POST(req: NextRequest) {
   if (!isAuthenticated(req)) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 });

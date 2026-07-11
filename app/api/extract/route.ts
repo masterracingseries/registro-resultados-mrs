@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isAuthenticated } from '@/lib/auth';
 import { extractRaceResults } from '@/lib/gemini';
 
+// Da margen a Gemini en imágenes lentas (el default de Vercel puede cortar antes)
+export const maxDuration = 60;
+
 export async function POST(req: NextRequest) {
   if (!isAuthenticated(req)) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 });

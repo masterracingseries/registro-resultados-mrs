@@ -1,9 +1,10 @@
 'use client';
 
-import { CheckCircle2, AlertTriangle, Trash2, Plus, UserPlus, X } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, Trash2, Plus, UserPlus, X, Timer } from 'lucide-react';
 import { ResultRow, Pilot } from '@/types';
 import { F1_TEAMS, cn } from '@/lib/constants';
 import { calculatePoints } from '@/lib/points';
+import { pilotLabel } from '@/lib/matching';
 
 interface ResultsTableProps {
   results: ResultRow[];
@@ -13,6 +14,12 @@ interface ResultsTableProps {
   onDelete: (index: number) => void;
 }
 
+function uniquePilotList(pilots: Pilot[]): Pilot[] {
+  return Array.from(new Map(pilots.map((p) => [p.idPilotoOficial, p])).values()).sort((a, b) =>
+    pilotLabel(a).localeCompare(pilotLabel(b))
+  );
+}
+
 export default function ResultsTable({
   results,
   pilots,
@@ -20,11 +27,7 @@ export default function ResultsTable({
   onUpdate,
   onDelete,
 }: ResultsTableProps) {
-  const pilotLabel = (p: Pilot) => p.alias1 || p.idPilotoOficial;
-
-  const uniquePilots = Array.from(
-    new Map(pilots.map((p) => [p.idPilotoOficial, p])).values()
-  ).sort((a, b) => pilotLabel(a).localeCompare(pilotLabel(b)));
+  const uniquePilots = uniquePilotList(pilots);
 
   const handlePilotSelect = (index: number, pilotId: string) => {
     const pilot = uniquePilots.find((p) => p.idPilotoOficial === pilotId);
@@ -54,90 +57,103 @@ export default function ResultsTable({
 
   const canSaveAlias = (row: ResultRow): boolean => {
     if (!row.pilotId) return false;
-    const pilotRows = pilots.filter((p) => p.idPilotoOficial === row.pilotId);
-    const first = pilotRows[0];
+    const first = pilots.find((p) => p.idPilotoOficial === row.pilotId);
     if (!first) return false;
-    // Can save alias if alias2 or alias3 is empty
     return !first.alias2 || !first.alias3;
   };
 
   const aliasSlotLabel = (row: ResultRow): string => {
     if (!row.pilotId) return '';
-    const pilotRows = pilots.filter((p) => p.idPilotoOficial === row.pilotId);
-    const first = pilotRows[0];
+    const first = pilots.find((p) => p.idPilotoOficial === row.pilotId);
     if (!first) return '';
     if (!first.alias2) return 'Alias 2';
     if (!first.alias3) return 'Alias 3';
     return 'Sin espacio';
   };
 
-  const unmatched = results.filter((r) => !r.matched && !r.isNewPilot && !r.pilotId).length;
+  const matched = results.filter((r) => r.matched || r.pilotId).length;
+  const pending = results.length - matched;
 
   return (
     <div className="space-y-4">
-      {unmatched > 0 && (
-        <div className="flex items-center gap-2 bg-amber-50 border border-amber-300 px-4 py-2 text-xs text-amber-800 uppercase tracking-widest font-bold">
-          <AlertTriangle size={14} />
-          {unmatched} piloto{unmatched > 1 ? 's' : ''} sin match — resuelve antes de guardar
-        </div>
-      )}
+      {/* Resumen de matching */}
+      <div className="flex items-center gap-4 text-sm font-semibold">
+        <span className="flex items-center gap-1.5 text-emerald-700">
+          <CheckCircle2 size={15} /> {matched} resuelto{matched !== 1 ? 's' : ''}
+        </span>
+        {pending > 0 && (
+          <span className="flex items-center gap-1.5 text-accent">
+            <AlertTriangle size={15} /> {pending} por resolver
+          </span>
+        )}
+      </div>
 
-      <div className="border border-[#141414] overflow-hidden">
+      <div className="border border-ink overflow-hidden bg-paper-raised">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="bg-[#141414] text-[#E4E3E0]">
-                <th className="px-3 py-3 text-[10px] uppercase tracking-widest w-10">Pos</th>
-                <th className="px-3 py-3 text-[10px] uppercase tracking-widest">Piloto (juego)</th>
-                <th className="px-3 py-3 text-[10px] uppercase tracking-widest w-6"></th>
-                <th className="px-3 py-3 text-[10px] uppercase tracking-widest">Piloto Oficial</th>
-                <th className="px-3 py-3 text-[10px] uppercase tracking-widest">Equipo</th>
-                <th className="px-3 py-3 text-[10px] uppercase tracking-widest w-12">Pts</th>
-                <th className="px-3 py-3 text-[10px] uppercase tracking-widest w-8"></th>
+              <tr className="bg-ink text-paper">
+                <th className="px-3 py-3 text-[11px] uppercase tracking-widest w-12">Pos</th>
+                <th className="px-3 py-3 text-[11px] uppercase tracking-widest">Piloto (juego)</th>
+                <th className="px-3 py-3 text-[11px] uppercase tracking-widest w-7"></th>
+                <th className="px-3 py-3 text-[11px] uppercase tracking-widest">Piloto oficial</th>
+                <th className="px-3 py-3 text-[11px] uppercase tracking-widest">Equipo</th>
+                <th className="px-3 py-3 text-[11px] uppercase tracking-widest w-14 text-right">Pts</th>
+                <th className="px-3 py-3 w-10"></th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#141414]/10">
+            <tbody className="divide-y divide-ink/10">
               {results.map((row, idx) => (
                 <tr
                   key={idx}
                   className={cn(
                     'group transition-colors',
-                    row.matched ? 'hover:bg-[#141414]/5' : 'bg-amber-50/60 hover:bg-amber-50'
+                    row.matched || row.pilotId ? 'hover:bg-ink/5' : 'bg-accent/5 hover:bg-accent/10'
                   )}
                 >
                   {/* Pos */}
-                  <td className="px-3 py-3 font-mono text-sm font-bold">{row.position}</td>
+                  <td className="px-3 py-3 font-mono text-base font-bold align-top">{row.position}</td>
 
-                  {/* In-game name */}
-                  <td className="px-3 py-3">
-                    <span className="text-xs font-mono opacity-70">{row.pilotName}</span>
+                  {/* In-game name + lap data */}
+                  <td className="px-3 py-3 align-top">
+                    <span className="text-sm font-mono font-semibold">{row.pilotName}</span>
+                    <div className="mt-1 flex flex-wrap items-center gap-x-3 text-[11px] font-mono opacity-50">
+                      {row.grid != null && <span title="Posición de salida">P{row.grid} salida</span>}
+                      {row.bestLap && (
+                        <span className="flex items-center gap-0.5" title="Mejor vuelta">
+                          <Timer size={10} /> {row.bestLap}
+                        </span>
+                      )}
+                      {row.time && <span title="Tiempo / diferencia">{row.time}</span>}
+                    </div>
                   </td>
 
                   {/* Match status */}
-                  <td className="px-3 py-3">
-                    {row.matched ? (
-                      <CheckCircle2 size={14} className="text-emerald-600" />
+                  <td className="px-3 py-3.5 align-top">
+                    {row.matched || row.pilotId ? (
+                      <CheckCircle2 size={15} className="text-emerald-600" />
                     ) : (
-                      <AlertTriangle size={14} className="text-amber-500" />
+                      <AlertTriangle size={15} className="text-accent" />
                     )}
                   </td>
 
                   {/* Official pilot / new pilot */}
-                  <td className="px-3 py-3 min-w-[200px]">
+                  <td className="px-3 py-3 min-w-[210px] align-top">
                     {row.isNewPilot ? (
                       /* ── New pilot mini-form ── */
-                      <div className="space-y-1.5">
-                        <div className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider text-emerald-700">
-                          <UserPlus size={11} />
-                          <span className="truncate max-w-[130px]">{row.pilotName}</span>
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-emerald-700">
+                          <UserPlus size={12} />
+                          <span className="truncate max-w-[140px]">{row.crossDivAlias1 || row.pilotName}</span>
                           <button
                             onClick={() => handleCancelNewPilot(idx)}
                             className="ml-auto opacity-50 hover:opacity-100"
+                            title="Cancelar registro"
                           >
-                            <X size={11} />
+                            <X size={12} />
                           </button>
                         </div>
-                        <div className="flex gap-1">
+                        <div className="flex gap-1.5">
                           {(['Titular', 'Reserva'] as const).map((tipo) => (
                             <button
                               key={tipo}
@@ -148,10 +164,10 @@ export default function ResultsTable({
                                 })
                               }
                               className={cn(
-                                'text-[9px] px-2 py-0.5 border uppercase tracking-wider',
+                                'text-[10px] px-2.5 py-1 border uppercase tracking-wider font-bold transition-colors',
                                 row.newPilotTipo === tipo
-                                  ? 'bg-[#141414] text-[#E4E3E0] border-[#141414]'
-                                  : 'border-[#141414]/40 hover:border-[#141414]'
+                                  ? 'bg-ink text-paper border-ink'
+                                  : 'border-ink/40 hover:border-ink'
                               )}
                             >
                               {tipo}
@@ -163,8 +179,8 @@ export default function ResultsTable({
                             value={row.newPilotEquipo}
                             onChange={(e) => onUpdate(idx, { newPilotEquipo: e.target.value })}
                             className={cn(
-                              'w-full bg-transparent border px-1.5 py-1 text-[10px] focus:outline-none cursor-pointer',
-                              !row.newPilotEquipo ? 'border-red-400 text-red-500' : 'border-[#141414]/40'
+                              'w-full bg-transparent border px-2 py-1.5 text-xs focus:outline-none cursor-pointer transition-colors',
+                              !row.newPilotEquipo ? 'border-accent text-accent' : 'border-ink/40'
                             )}
                           >
                             <option value="">— Equipo —</option>
@@ -182,7 +198,7 @@ export default function ResultsTable({
                           onChange={(e) => handlePilotSelect(idx, e.target.value)}
                           className={cn(
                             'w-full bg-transparent text-sm focus:outline-none cursor-pointer',
-                            !row.pilotId && 'text-red-500 font-bold'
+                            !row.pilotId && 'text-accent font-bold'
                           )}
                         >
                           <option value="">— Seleccionar —</option>
@@ -195,7 +211,7 @@ export default function ResultsTable({
 
                         {/* Options for unmatched rows with pilot selected */}
                         {!row.matched && row.pilotId && (
-                          <div className="mt-1.5 space-y-1">
+                          <div className="mt-2 space-y-1.5">
                             {canSaveAlias(row) && (
                               <label className="flex items-center gap-1.5 cursor-pointer">
                                 <input
@@ -203,9 +219,9 @@ export default function ResultsTable({
                                   name={`action-${idx}`}
                                   checked={row.saveAsAlias && !row.updateAlias1}
                                   onChange={() => onUpdate(idx, { saveAsAlias: true, updateAlias1: false })}
-                                  className="accent-[#141414]"
+                                  className="accent-ink"
                                 />
-                                <span className="text-[9px] uppercase tracking-wider text-amber-700">
+                                <span className="text-[11px] uppercase tracking-wider text-amber-700 font-semibold">
                                   Guardar como {aliasSlotLabel(row)}
                                 </span>
                               </label>
@@ -216,14 +232,14 @@ export default function ResultsTable({
                                 name={`action-${idx}`}
                                 checked={row.updateAlias1}
                                 onChange={() => onUpdate(idx, { updateAlias1: true, saveAsAlias: false })}
-                                className="accent-[#141414]"
+                                className="accent-ink"
                               />
-                              <span className="text-[9px] uppercase tracking-wider text-blue-700">
-                                Nuevo ID Oficial (reemplazar alias_1)
+                              <span className="text-[11px] uppercase tracking-wider text-blue-800 font-semibold">
+                                Nuevo ID oficial
                               </span>
                             </label>
                             {!canSaveAlias(row) && !row.updateAlias1 && (
-                              <span className="text-[9px] text-red-500 uppercase tracking-wider block">
+                              <span className="text-[11px] text-accent uppercase tracking-wider block font-semibold">
                                 3 aliases llenos
                               </span>
                             )}
@@ -234,9 +250,9 @@ export default function ResultsTable({
                         {!row.matched && !row.pilotId && (
                           <button
                             onClick={() => handleNewPilot(idx, row)}
-                            className="mt-1.5 flex items-center gap-1 text-[9px] uppercase tracking-wider text-emerald-700 hover:text-emerald-900"
+                            className="mt-2 flex items-center gap-1 text-[11px] uppercase tracking-wider text-emerald-700 hover:text-emerald-900 font-semibold"
                           >
-                            <UserPlus size={10} /> Registrar como nuevo piloto
+                            <UserPlus size={11} /> Registrar como nuevo piloto
                           </button>
                         )}
                       </div>
@@ -244,11 +260,11 @@ export default function ResultsTable({
                   </td>
 
                   {/* Team dropdown */}
-                  <td className="px-3 py-3 min-w-[160px]">
+                  <td className="px-3 py-3 min-w-[170px] align-top">
                     <select
                       value={row.team}
                       onChange={(e) => onUpdate(idx, { team: e.target.value })}
-                      className="w-full bg-transparent text-xs italic opacity-70 focus:outline-none cursor-pointer focus:opacity-100"
+                      className="w-full bg-transparent text-sm opacity-75 focus:outline-none cursor-pointer focus:opacity-100"
                     >
                       {F1_TEAMS.map((t) => (
                         <option key={t} value={t}>
@@ -262,17 +278,18 @@ export default function ResultsTable({
                   </td>
 
                   {/* Points */}
-                  <td className="px-3 py-3 font-mono text-sm font-bold">
+                  <td className="px-3 py-3 font-mono text-base font-bold text-right align-top">
                     {calculatePoints(row.position, raceType)}
                   </td>
 
                   {/* Delete */}
-                  <td className="px-3 py-3">
+                  <td className="px-3 py-3 align-top">
                     <button
                       onClick={() => onDelete(idx)}
-                      className="text-red-400 opacity-0 group-hover:opacity-100 transition-opacity hover:text-red-600"
+                      title="Eliminar fila"
+                      className="text-accent/60 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity hover:text-accent"
                     >
-                      <Trash2 size={13} />
+                      <Trash2 size={14} />
                     </button>
                   </td>
                 </tr>
@@ -282,8 +299,8 @@ export default function ResultsTable({
         </div>
       </div>
 
-      <p className="text-[10px] uppercase tracking-widest opacity-40 text-center">
-        {results.length} pilotos • Salida, paradas y tiempos se guardan en segundo plano
+      <p className="text-[11px] uppercase tracking-widest opacity-40 text-center">
+        {results.length} pilotos · salida, paradas y tiempos se guardan automáticamente
       </p>
     </div>
   );
@@ -299,11 +316,7 @@ export function AddPilotForm({
   raceType: 'Carrera' | 'Sprint';
   onAdd: (row: ResultRow) => void;
 }) {
-  const pilotLabelAdd = (p: Pilot) => p.alias1 || p.idPilotoOficial;
-
-  const uniquePilots = Array.from(
-    new Map(pilots.map((p) => [p.idPilotoOficial, p])).values()
-  ).sort((a, b) => pilotLabelAdd(a).localeCompare(pilotLabelAdd(b)));
+  const uniquePilots = uniquePilotList(pilots);
 
   const handleAdd = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -313,10 +326,11 @@ export function AddPilotForm({
     const pilotId = data.get('pilotId') as string;
     const team = data.get('team') as string;
     const pilot = uniquePilots.find((p) => p.idPilotoOficial === pilotId);
+    if (!pilot) return;
 
     onAdd({
       position: pos,
-      pilotName: pilot?.alias1 || pilotId,
+      pilotName: pilot.alias1 || pilotId,
       team,
       grid: null,
       stops: null,
@@ -325,7 +339,7 @@ export function AddPilotForm({
       points: calculatePoints(pos, raceType),
       matched: true,
       pilotId,
-      pilotOfficialName: pilotLabelAdd(pilot!),
+      pilotOfficialName: pilotLabel(pilot),
       saveAsAlias: false,
       updateAlias1: false,
       isNewPilot: false,
@@ -338,39 +352,39 @@ export function AddPilotForm({
   return (
     <form
       onSubmit={handleAdd}
-      className="border border-dashed border-[#141414]/40 p-4 grid grid-cols-12 gap-3 items-end"
+      className="border border-dashed border-ink/40 bg-paper-raised p-4 grid grid-cols-12 gap-3 items-end"
     >
       <div className="col-span-2">
-        <label className="text-[9px] uppercase tracking-widest opacity-50 block mb-1">Pos</label>
+        <label className="text-[11px] uppercase tracking-widest opacity-60 font-semibold block mb-1">Pos</label>
         <input
           name="pos"
           type="number"
           min={1}
           max={30}
           required
-          className="w-full bg-transparent border border-[#141414]/40 px-2 py-1.5 text-xs focus:outline-none"
+          className="w-full bg-transparent border border-ink/40 px-2 py-2 text-sm focus:outline-none focus:border-accent transition-colors"
         />
       </div>
       <div className="col-span-4">
-        <label className="text-[9px] uppercase tracking-widest opacity-50 block mb-1">Piloto</label>
+        <label className="text-[11px] uppercase tracking-widest opacity-60 font-semibold block mb-1">Piloto</label>
         <select
           name="pilotId"
           required
-          className="w-full bg-transparent border border-[#141414]/40 px-2 py-1.5 text-xs focus:outline-none cursor-pointer"
+          className="w-full bg-transparent border border-ink/40 px-2 py-2 text-sm focus:outline-none focus:border-accent transition-colors cursor-pointer"
         >
-          <option value="">Seleccionar...</option>
+          <option value="">Seleccionar…</option>
           {uniquePilots.map((p) => (
             <option key={p.idPilotoOficial} value={p.idPilotoOficial}>
-              {pilotLabelAdd(p)}
+              {pilotLabel(p)}
             </option>
           ))}
         </select>
       </div>
       <div className="col-span-4">
-        <label className="text-[9px] uppercase tracking-widest opacity-50 block mb-1">Equipo</label>
+        <label className="text-[11px] uppercase tracking-widest opacity-60 font-semibold block mb-1">Equipo</label>
         <select
           name="team"
-          className="w-full bg-transparent border border-[#141414]/40 px-2 py-1.5 text-xs focus:outline-none cursor-pointer"
+          className="w-full bg-transparent border border-ink/40 px-2 py-2 text-sm focus:outline-none focus:border-accent transition-colors cursor-pointer"
         >
           {F1_TEAMS.map((t) => (
             <option key={t} value={t}>
@@ -382,9 +396,9 @@ export function AddPilotForm({
       <div className="col-span-2">
         <button
           type="submit"
-          className="w-full bg-[#141414] text-[#E4E3E0] py-1.5 text-[10px] uppercase tracking-widest font-bold flex items-center justify-center gap-1 hover:opacity-90"
+          className="w-full bg-ink text-paper py-2 text-xs uppercase tracking-widest font-bold flex items-center justify-center gap-1 hover:bg-accent transition-colors"
         >
-          <Plus size={12} /> Agregar
+          <Plus size={13} /> Agregar
         </button>
       </div>
     </form>
