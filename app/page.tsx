@@ -27,6 +27,7 @@ import {
   collectAliasUpdates,
   collectAlias1Updates,
   collectNewPilots,
+  collectStatusChanges,
 } from '@/lib/matching';
 
 const SPREADSHEET_ID = '11D8zcyPx3AdgPsF_pefks0hmicP3jGm22lDIZF24qAk';
@@ -194,34 +195,44 @@ export default function Home() {
       setStatus({ type: 'error', message: 'Selecciona el equipo para los pilotos nuevos titulares.' });
       return;
     }
+    const invalidStatusChanges = results.filter(
+      (r) => r.statusChange?.newStatus === 'Titular' && (!r.team || r.team === 'Reserva')
+    );
+    if (invalidStatusChanges.length > 0) {
+      setStatus({ type: 'error', message: 'Selecciona el equipo para los pilotos que pasan a Titular.' });
+      return;
+    }
     setIsSaving(true);
     setStatus(null);
     try {
       const aliasUpdates = collectAliasUpdates(results, pilots);
       const alias1Updates = collectAlias1Updates(results, pilots);
       const newPilots = collectNewPilots(results, metadata.division);
+      const statusChanges = collectStatusChanges(results, pilots, metadata.division);
       const res = await fetch('/api/results', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ results, metadata, aliasUpdates, alias1Updates, newPilots }),
+        body: JSON.stringify({ results, metadata, aliasUpdates, alias1Updates, newPilots, statusChanges }),
       });
       if (!res.ok) {
         let msg = 'Error al guardar';
         try { msg = (await res.json()).error || msg; } catch {}
         throw new Error(msg);
       }
-      const { inserted, updated, newPilotsCreated, alias1Updated } = await res.json();
+      const { inserted, updated, newPilotsCreated, alias1Updated, statusChanged, retroRowsUpdated } = await res.json();
       const extras = [
         aliasUpdates.length > 0 && `${aliasUpdates.length} alias guardado(s)`,
         newPilotsCreated > 0 && `${newPilotsCreated} piloto(s) nuevo(s) registrado(s)`,
         alias1Updated > 0 && `${alias1Updated} ID oficial actualizado(s)`,
+        statusChanged > 0 && `${statusChanged} estatus cambiado(s)`,
+        retroRowsUpdated > 0 && `${retroRowsUpdated} resultado(s) anterior(es) actualizado(s)`,
       ].filter(Boolean).join(', ');
       setStatus({
         type: 'success',
         message: `Guardado: ${inserted} nuevos, ${updated} actualizados.${extras ? ' ' + extras + '.' : ''}`,
       });
       setSaved(true);
-      if (aliasUpdates.length > 0 || newPilotsCreated > 0 || alias1Updated > 0) loadPilots();
+      if (aliasUpdates.length > 0 || newPilotsCreated > 0 || alias1Updated > 0 || statusChanged > 0) loadPilots();
     } catch (err: unknown) {
       setStatus({ type: 'error', message: (err as Error).message || 'Error al guardar.' });
     } finally {
@@ -261,13 +272,17 @@ export default function Home() {
   if (!isLoggedIn) return <LoginForm onLogin={handleLogin} />;
 
   const hasUnresolved = results.some(
-    (r) => !r.pilotId || (r.isNewPilot && r.newPilotTipo === 'Titular' && !r.newPilotEquipo)
+    (r) =>
+      !r.pilotId ||
+      (r.isNewPilot && r.newPilotTipo === 'Titular' && !r.newPilotEquipo) ||
+      (r.statusChange?.newStatus === 'Titular' && (!r.team || r.team === 'Reserva'))
   );
 
   // Resumen de lo que va a pasar al guardar
   const pendingAliases = collectAliasUpdates(results, pilots).length;
   const pendingNewPilots = results.filter((r) => r.isNewPilot && r.pilotId).length;
   const pendingAlias1 = collectAlias1Updates(results, pilots).length;
+  const pendingStatusChanges = collectStatusChanges(results, pilots, metadata.division).length;
 
   return (
     <div className="min-h-screen bg-paper text-ink">
@@ -436,7 +451,7 @@ export default function Home() {
           {results.length > 0 ? (
             <>
               <ResultsTable results={results} pilots={pilots} raceType={metadata.tipoCarrera}
-                onUpdate={updateResult} onDelete={deleteResult} />
+                division={metadata.division} onUpdate={updateResult} onDelete={deleteResult} />
 
               <div className="space-y-1.5">
                 <p className="text-[11px] uppercase tracking-widest opacity-50 font-bold">Agregar piloto manualmente</p>
@@ -479,6 +494,7 @@ export default function Home() {
                       {pendingAliases > 0 && <> · {pendingAliases} alias nuevo(s)</>}
                       {pendingNewPilots > 0 && <> · {pendingNewPilots} piloto(s) nuevo(s)</>}
                       {pendingAlias1 > 0 && <> · {pendingAlias1} ID oficial actualizado(s)</>}
+                      {pendingStatusChanges > 0 && <> · {pendingStatusChanges} cambio(s) de estatus</>}
                     </p>
                   )}
                 </>

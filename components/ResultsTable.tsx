@@ -1,6 +1,6 @@
 'use client';
 
-import { CheckCircle2, AlertTriangle, Trash2, Plus, UserPlus, X, Timer } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, Trash2, Plus, UserPlus, X, Timer, ArrowLeftRight } from 'lucide-react';
 import { ResultRow, Pilot } from '@/types';
 import { F1_TEAMS, cn } from '@/lib/constants';
 import { calculatePoints } from '@/lib/points';
@@ -10,6 +10,7 @@ interface ResultsTableProps {
   results: ResultRow[];
   pilots: Pilot[];
   raceType: 'Carrera' | 'Sprint';
+  division: string;
   onUpdate: (index: number, updates: Partial<ResultRow>) => void;
   onDelete: (index: number) => void;
 }
@@ -24,10 +25,38 @@ export default function ResultsTable({
   results,
   pilots,
   raceType,
+  division,
   onUpdate,
   onDelete,
 }: ResultsTableProps) {
   const uniquePilots = uniquePilotList(pilots);
+
+  // Fila del maestro para este piloto en LA división actual (el estatus es por división)
+  const masterInDivision = (pilotId: string | null): Pilot | undefined =>
+    pilotId
+      ? pilots.find((p) => p.idPilotoOficial === pilotId && p.divisionActual === division)
+      : undefined;
+
+  const handleStatusFlip = (index: number, row: ResultRow, currentStatus: string) => {
+    const newStatus = currentStatus === 'Reserva' ? ('Titular' as const) : ('Reserva' as const);
+    onUpdate(index, {
+      statusChange: { newStatus, retroactive: false },
+      // Reserva ⟺ equipo "Reserva"; al volver a Titular, restaurar el equipo de la captura
+      team:
+        newStatus === 'Reserva'
+          ? 'Reserva'
+          : row.detectedTeam && row.detectedTeam !== 'Reserva'
+            ? row.detectedTeam
+            : '',
+    });
+  };
+
+  const handleStatusCancel = (index: number, row: ResultRow, currentStatus: string) => {
+    onUpdate(index, {
+      statusChange: null,
+      team: currentStatus === 'Reserva' ? 'Reserva' : row.detectedTeam || row.team,
+    });
+  };
 
   const handlePilotSelect = (index: number, pilotId: string) => {
     const pilot = uniquePilots.find((p) => p.idPilotoOficial === pilotId);
@@ -259,13 +288,17 @@ export default function ResultsTable({
                     )}
                   </td>
 
-                  {/* Team dropdown */}
-                  <td className="px-3 py-3 min-w-[170px] align-top">
+                  {/* Team dropdown + estatus Titular/Reserva */}
+                  <td className="px-3 py-3 min-w-[190px] align-top">
                     <select
                       value={row.team}
                       onChange={(e) => onUpdate(idx, { team: e.target.value })}
-                      className="w-full bg-transparent text-sm opacity-75 focus:outline-none cursor-pointer focus:opacity-100"
+                      className={cn(
+                        'w-full bg-transparent text-sm focus:outline-none cursor-pointer',
+                        !row.team ? 'text-accent font-bold' : 'opacity-75 focus:opacity-100'
+                      )}
                     >
+                      {!row.team && <option value="">— Equipo —</option>}
                       {F1_TEAMS.map((t) => (
                         <option key={t} value={t}>
                           {t}
@@ -275,6 +308,83 @@ export default function ResultsTable({
                         <option value={row.team}>{row.team} (detectado)</option>
                       )}
                     </select>
+
+                    {/* Cambio de estatus (solo pilotos registrados en esta división) */}
+                    {!row.isNewPilot && row.pilotId && (() => {
+                      const master = masterInDivision(row.pilotId);
+                      if (!master) return null;
+                      const currentStatus = master.statusGeneral || 'Titular';
+                      const opposite = currentStatus === 'Reserva' ? 'Titular' : 'Reserva';
+
+                      if (!row.statusChange) {
+                        return (
+                          <button
+                            onClick={() => handleStatusFlip(idx, row, currentStatus)}
+                            className="mt-1.5 flex items-center gap-1 text-[10px] uppercase tracking-wider opacity-45 hover:opacity-100 hover:text-blue-800 font-semibold transition-all"
+                            title={`Cambiar estatus en Maestro_Pilotos para ${division}`}
+                          >
+                            <ArrowLeftRight size={10} /> {currentStatus} · pasar a {opposite}
+                          </button>
+                        );
+                      }
+
+                      const toReserva = row.statusChange.newStatus === 'Reserva';
+                      return (
+                        <div className="mt-2 space-y-1.5 border-l-2 border-blue-800/50 pl-2">
+                          <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-blue-800">
+                            <ArrowLeftRight size={11} />
+                            {currentStatus} → {row.statusChange.newStatus}
+                            <button
+                              onClick={() => handleStatusCancel(idx, row, currentStatus)}
+                              className="ml-auto opacity-50 hover:opacity-100"
+                              title="Cancelar cambio de estatus"
+                            >
+                              <X size={12} />
+                            </button>
+                          </div>
+                          <label className="flex items-start gap-1.5 cursor-pointer">
+                            <input
+                              type="radio"
+                              name={`retro-${idx}`}
+                              checked={!row.statusChange.retroactive}
+                              onChange={() =>
+                                onUpdate(idx, {
+                                  statusChange: { ...row.statusChange!, retroactive: false },
+                                })
+                              }
+                              className="accent-ink mt-0.5"
+                            />
+                            <span className="text-[11px] leading-tight">
+                              <strong>Solo desde ahora</strong>
+                              <span className="block opacity-60">
+                                Los resultados anteriores no cambian (aparecerá con dos equipos en el histórico)
+                              </span>
+                            </span>
+                          </label>
+                          <label className="flex items-start gap-1.5 cursor-pointer">
+                            <input
+                              type="radio"
+                              name={`retro-${idx}`}
+                              checked={row.statusChange.retroactive}
+                              onChange={() =>
+                                onUpdate(idx, {
+                                  statusChange: { ...row.statusChange!, retroactive: true },
+                                })
+                              }
+                              className="accent-ink mt-0.5"
+                            />
+                            <span className="text-[11px] leading-tight">
+                              <strong>Retroactivo</strong>
+                              <span className="block opacity-60">
+                                {toReserva
+                                  ? 'Sus resultados anteriores de esta división pasan a Reserva (se restan puntos de constructores)'
+                                  : 'Sus resultados anteriores de esta división pasan al nuevo equipo (suman puntos de constructores)'}
+                              </span>
+                            </span>
+                          </label>
+                        </div>
+                      );
+                    })()}
                   </td>
 
                   {/* Points */}

@@ -1,4 +1,4 @@
-import { Pilot, ResultRow, AliasUpdate, Alias1Update, NewPilot } from '@/types';
+import { Pilot, ResultRow, AliasUpdate, Alias1Update, NewPilot, StatusChange } from '@/types';
 import { normalizeTeamName } from '@/lib/constants';
 import { calculatePoints } from '@/lib/points';
 
@@ -46,6 +46,7 @@ const emptyRowFlags = {
   isNewPilot: false,
   newPilotTipo: 'Titular' as const,
   newPilotEquipo: '',
+  statusChange: null,
 };
 
 export function matchResults(
@@ -75,6 +76,7 @@ export function matchResults(
       bestLap: r.mejor_tiempo || '',
       time: r.tiempo || '',
       points: calculatePoints(r.pos, raceType),
+      detectedTeam: normalizedTeam,
     };
 
     // 1. Exact division match
@@ -150,6 +152,31 @@ export function collectAlias1Updates(results: ResultRow[], pilots: Pilot[]): Ali
     });
   });
   return updates;
+}
+
+export function collectStatusChanges(
+  results: ResultRow[],
+  pilots: Pilot[],
+  division: string
+): StatusChange[] {
+  const changes: StatusChange[] = [];
+  results.forEach((r) => {
+    if (!r.statusChange || !r.pilotId) return;
+    // Solo pilotos que existen en Maestro_Pilotos para ESTA división
+    const divRows = pilots.filter(
+      (p) => p.idPilotoOficial === r.pilotId && p.divisionActual === division
+    );
+    if (!divRows.length) return;
+    changes.push({
+      pilotId: r.pilotId,
+      division,
+      newStatus: r.statusChange.newStatus,
+      newTeam: r.statusChange.newStatus === 'Reserva' ? 'Reserva' : r.team,
+      retroactive: r.statusChange.retroactive,
+      rowIndices: divRows.map((p) => p.rowIndex),
+    });
+  });
+  return changes;
 }
 
 export function collectNewPilots(results: ResultRow[], division: string): NewPilot[] {

@@ -31,6 +31,17 @@ export interface ResultRow {
   newPilotTipo: 'Titular' | 'Reserva';
   newPilotEquipo: string;
   crossDivAlias1?: string; // official alias1 when matched cross-division (used for new Maestro_Pilotos row)
+  detectedTeam?: string; // equipo normalizado leído de la captura (para restaurarlo al volver a Titular)
+  statusChange?: { newStatus: 'Titular' | 'Reserva'; retroactive: boolean } | null;
+}
+
+export interface StatusChange {
+  pilotId: string;
+  division: string;
+  newStatus: 'Titular' | 'Reserva';
+  newTeam: string; // 'Reserva' si newStatus es Reserva
+  retroactive: boolean;
+  rowIndices: number[]; // filas de Maestro_Pilotos de ese piloto en esa división
 }
 
 export interface NewPilot {

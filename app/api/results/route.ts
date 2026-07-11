@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isAuthenticated } from '@/lib/auth';
 import { getSheetsClient, SPREADSHEET_ID, formatForSheets } from '@/lib/sheets';
-import { ResultRow, RaceMetadata, AliasUpdate, Alias1Update, NewPilot } from '@/types';
+import { ResultRow, RaceMetadata, AliasUpdate, Alias1Update, NewPilot, StatusChange } from '@/types';
 
 // Varias escrituras secuenciales a Sheets pueden superar el timeout default
 export const maxDuration = 60;
@@ -17,13 +17,14 @@ export async function POST(req: NextRequest) {
     aliasUpdates: AliasUpdate[];
     alias1Updates: Alias1Update[];
     newPilots: NewPilot[];
+    statusChanges: StatusChange[];
   };
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: 'Body inválido' }, { status: 400 });
   }
-  const { results, metadata, aliasUpdates, alias1Updates, newPilots } = body;
+  const { results, metadata, aliasUpdates, alias1Updates, newPilots, statusChanges } = body;
 
   let sheets: Awaited<ReturnType<typeof getSheetsClient>>;
   try {
@@ -81,7 +82,50 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  // 3. Build result rows
+  // 3. Cambios de estatus Titular↔Reserva (Maestro_Pilotos + retroactivo opcional)
+  let retroRowsUpdated = 0;
+  if (statusChanges && statusChanges.length > 0) {
+    // 3a. Maestro_Pilotos: col D (Equipo_Actual) y col F (status) de ese piloto en esa división
+    const maestroData = statusChanges.flatMap(({ rowIndices, newStatus, newTeam }) =>
+      rowIndices.flatMap((rowIndex) => [
+        { range: `Maestro_Pilotos!D${rowIndex}`, values: [[newTeam]] },
+        { range: `Maestro_Pilotos!F${rowIndex}`, values: [[newStatus]] },
+      ])
+    );
+    await sheets.spreadsheets.values.batchUpdate({
+      spreadsheetId: SPREADSHEET_ID,
+      requestBody: { valueInputOption: 'USER_ENTERED', data: maestroData },
+    });
+
+    // 3b. Retroactivo: equipo (col I) de todos los resultados anteriores de ese piloto en esa división
+    const retro = statusChanges.filter((s) => s.retroactive);
+    if (retro.length > 0) {
+      const existing = await sheets.spreadsheets.values.get({
+        spreadsheetId: SPREADSHEET_ID,
+        range: 'Resultados_Crudos!A:I',
+      });
+      const retroData: { range: string; values: string[][] }[] = [];
+      (existing.data.values || []).forEach((row, i) => {
+        const rowDivision = row[3]; // col D
+        const rowPilotId = row[6]; // col G
+        const change = retro.find(
+          (s) => s.pilotId === rowPilotId && s.division === rowDivision
+        );
+        if (change) {
+          retroData.push({ range: `Resultados_Crudos!I${i + 1}`, values: [[change.newTeam]] });
+        }
+      });
+      if (retroData.length > 0) {
+        await sheets.spreadsheets.values.batchUpdate({
+          spreadsheetId: SPREADSHEET_ID,
+          requestBody: { valueInputOption: 'USER_ENTERED', data: retroData },
+        });
+        retroRowsUpdated = retroData.length;
+      }
+    }
+  }
+
+  // 4. Build result rows
   const rows = results.map((r) => {
     const idPiloto = r.pilotId || 'NO_REGISTRADO';
     const idResultado = `${granPremio.toUpperCase().replace(/\s/g, '')}-DIV${divNum}-${idPiloto}`;
@@ -158,6 +202,8 @@ export async function POST(req: NextRequest) {
     updated: toUpdate.length,
     newPilotsCreated: newPilots?.length ?? 0,
     alias1Updated: alias1Updates?.length ?? 0,
+    statusChanged: statusChanges?.length ?? 0,
+    retroRowsUpdated,
   });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
