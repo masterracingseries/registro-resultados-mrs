@@ -16,6 +16,7 @@ export const F1_TRACKS = [
   'Mónaco (Monte Carlo)',
   'Canadá (Montreal)',
   'España (Barcelona)',
+  'España (Madrid)',
   'Austria (Spielberg)',
   'Gran Bretaña (Silverstone)',
   'Hungría (Budapest)',
